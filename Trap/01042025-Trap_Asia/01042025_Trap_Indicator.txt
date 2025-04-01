@@ -1,0 +1,107 @@
+version=6
+indicator("Asia Session Trap & Fade (v6 FULL with Auto OB & FVG)", overlay=true)
+
+// === INPUTS === //
+startHour = input.int(20, title="Asia Session Start Hour (UTC)")
+startMin = input.int(30, title="Asia Session Start Minute")
+endHour = input.int(23, title="Asia Session End Hour (UTC)")
+endMin = input.int(30, title="Asia Session End Minute")
+
+// === FIX for built-in conflicts === //
+myYear = year(time)
+myMonth = month(time)
+myDay = dayofmonth(time)
+
+// === TIME RANGE === //
+session_start = timestamp("UTC", myYear, myMonth, myDay, startHour, startMin)
+session_end = timestamp("UTC", myYear, myMonth, myDay, endHour, endMin)
+in_session = time >= session_start and time <= session_end
+
+// === TRACK ASIA SESSION HIGH & LOW === //
+var float asiaHigh = na
+var float asiaLow = na
+asiaHigh := in_session ? na(asiaHigh) ? high : math.max(asiaHigh, high) : na
+asiaLow := in_session ? na(asiaLow) ? low : math.min(asiaLow, low) : na
+if not in_session
+asiaHigh := na
+asiaLow := na
+
+plot(in_session ? asiaHigh : na, title="Asia High", color=color.red, linewidth=1)
+plot(in_session ? asiaLow : na, title="Asia Low", color=color.green, linewidth=1)
+plot(in_session ? (asiaHigh + asiaLow) / 2 : na, title="Asia Midline", color=color.orange, linewidth=1)
+bgcolor(in_session ? color.new(color.purple, 85) : na)
+
+// === PREVIOUS DAY HIGH/LOW === //
+previousHigh = request.security(syminfo.tickerid, "D", high[1])
+previousLow = request.security(syminfo.tickerid, "D", low[1])
+plot(previousHigh, title="Previous Day High", color=color.fuchsia, linewidth=1)
+plot(previousLow, title="Previous Day Low", color=color.aqua, linewidth=1)
+
+// === SWEEP DETECTION === //
+sweepHigh = ta.crossover(high, asiaHigh[1])
+sweepLow = ta.crossunder(low, asiaLow[1])
+plotshape(sweepHigh, title="Asia High Sweep", location=location.abovebar, color=color.red, style=shape.triangleup, size=size.small)
+plotshape(sweepLow, title="Asia Low Sweep", location=location.belowbar, color=color.green, style=shape.triangledown, size=size.small)
+
+// === BOS DETECTION === //
+var float prevSwingHigh = na
+var float prevSwingLow = na
+prevSwingHigh := high > high[1] and high[1] > high[2] ? high[1] : prevSwingHigh
+prevSwingLow := low < low[1] and low[1] < low[2] ? low[1] : prevSwingLow
+bosUp = ta.crossover(close, prevSwingHigh)
+bosDown = ta.crossunder(close, prevSwingLow)
+plotshape(bosUp, title="BOS Up", location=location.abovebar, style=shape.labelup, color=color.blue, text="BOS↑")
+plotshape(bosDown, title="BOS Down", location=location.belowbar, style=shape.labeldown, color=color.purple, text="BOS↓")
+
+// === FVG ZONES (Auto Rectangle Drawing) === //
+var fvg_top = array.new_float()
+var fvg_bot = array.new_float()
+var fvg_time = array.new_int()
+
+bullishFVG = low > high[2]
+bearishFVG = high < low[2]
+
+if bullishFVG
+array.push(fvg_top, low)
+array.push(fvg_bot, high[2])
+array.push(fvg_time, bar_index)
+
+if bearishFVG
+array.push(fvg_top, low[2])
+array.push(fvg_bot, high)
+array.push(fvg_time, bar_index)
+
+max_zones = 5
+for i = 0 to math.min(array.size(fvg_top) - 1, max_zones - 1)
+top = array.get(fvg_top, i)
+bot = array.get(fvg_bot, i)
+t = array.get(fvg_time, i)
+var box b = na
+b := box.new(left=t, right=bar_index, top=top, bottom=bot, border_color=color.new(color.teal, 0), bgcolor=color.new(color.teal, 85))
+box.set_right(b, bar_index)
+
+// === ORDER BLOCK (Auto Box Drawing) === //
+var ob_top = array.new_float()
+var ob_bot = array.new_float()
+var ob_time = array.new_int()
+
+isBullishOB = close[2] < open[2] and close[1] > high[2]
+isBearishOB = close[2] > open[2] and close[1] < low[2]
+
+if isBullishOB
+array.push(ob_top, open[2])
+array.push(ob_bot, low[2])
+array.push(ob_time, bar_index)
+
+if isBearishOB
+array.push(ob_top, high[2])
+array.push(ob_bot, open[2])
+array.push(ob_time, bar_index)
+
+for i = 0 to math.min(array.size(ob_top) - 1, max_zones - 1)
+otop = array.get(ob_top, i)
+obot = array.get(ob_bot, i)
+ot = array.get(ob_time, i)
+var box ob = na
+ob := box.new(left=ot, right=bar_index, top=otop, bottom=obot, border_color=color.new(color.orange, 0), bgcolor=color.new(color.orange, 85))
+box.set_right(ob, bar_index)
